@@ -11,9 +11,6 @@
 //  can capture the original object via reference, and stash the
 //  object into a local buffer
 //
-//  Created by Christopher Goebel on 10/5/19.
-//  Copyright © 2019 Christopher Goebel. All rights reserved.
-//
 
 
 #include <string>
@@ -36,10 +33,11 @@ struct VehicleInterface {
  * the lambda with a cast.
  */
 class Vehicle {
-  std::string type_tag;
-  std::function<void(int)>accelerate_impl;
+  std::string type_tag; // currently unused but could use for unerasure?
+  std::function<void(int)>accelerate_impl_;
   
-  std::aligned_storage<64> buffer_;
+  std::aligned_storage<64> buffer_; // cache for the object this wraps
+  std::function<void(void)> buffer_deleter_; // store deleter for buffer's placement new
   
 public:
   template <typename Any,
@@ -47,23 +45,40 @@ public:
   >
   Vehicle(Any && vehicle)
     : type_tag(std::string(typeid(Any).name())),
-      accelerate_impl([this, &vehicle](int x){
-        using T = decltype(vehicle);
-        return reinterpret_cast<T>(buffer_).accelerate(x);
+      accelerate_impl_([this, &vehicle](int x) {
+          using T = decltype(vehicle);
+          return reinterpret_cast<T>(buffer_).accelerate(x);
+        }
+      ),
+      buffer_deleter_([this, &vehicle] {
+          using T = decltype(vehicle);
+          delete reinterpret_cast<T>(buffer_);
         }
       )
   {
-    static_assert(sizeof(Any) <= MAX_BUFFER_SIZE, "you type must not exceed 64 bytes");
+    // save only objects that are less than 64 bytes
+    static_assert(
+      sizeof(Any) <= MAX_BUFFER_SIZE,
+      "you type must not exceed 64 bytes"
+    );
+    
+    // placement new
     new (&buffer_) Any(std::forward<Any>(vehicle));
   }
   
+  ~Vehicle() {
+      
+  }
   
+  // public interface that presents the same interface as the
+  // base interface but dispatches the call to the real class.
   auto accelerate(int x) const {
-    return accelerate_impl(x);
+    return accelerate_impl_(x);
   }
 };
 
 
+// some example classes which inherit from the interfaces
 struct Car2 : VehicleInterface {
   void accelerate(int x) const {
     std::cout << "car increasing speed by " + std::to_string(x) + "\n";
@@ -75,6 +90,7 @@ struct AirPlane2 : VehicleInterface {
   }
 };
 
+// drive it
 int main(int argc, const char * argv[]) {
   std::vector<Vehicle> vehicles2 = {Car2{}, AirPlane2{}};
   for (auto const & v : vehicles2) {
