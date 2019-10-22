@@ -67,7 +67,7 @@ public:
   }
   
   ~Vehicle() {
-      
+    buffer_deleter_();
   }
   
   // public interface that presents the same interface as the
