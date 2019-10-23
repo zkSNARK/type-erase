@@ -34,26 +34,29 @@ struct VehicleInterface {
  * the lambda with a cast.
  */
 class Vehicle {
-  std::string type_tag_; // currently unused but could use for unerasure?
+  std::aligned_storage_t<MAX_BUFFER_SIZE> buffer_; // cache for the object this wraps
+
   std::function<void(int)>accelerate_impl_;
-  
-  std::aligned_storage<64> buffer_; // cache for the object this wraps
-  std::function<void(void)> buffer_deleter_; // store deleter for buffer's placement new
-  
+
+  void * buffer_ptr_; // allows us to put placement new in init list but costs
+                      // an extra ptr in size.
+
+  void (*buffer_deleter_)(void*) noexcept ;
+
 public:
   template <typename Any,
     typename = std::enable_if_t<std::is_base_of<VehicleInterface, Any>::value>
   >
   Vehicle(Any && vehicle)
-    : type_tag_(std::string(typeid(Any).name())),
-      accelerate_impl_([this, &vehicle](int x) {
+    : accelerate_impl_([this](int x) noexcept {
           using T = decltype(vehicle);
           return reinterpret_cast<T>(buffer_).accelerate(x);
         }
       ),
-      buffer_deleter_([this, &vehicle] {
-          using T = std::remove_cv_t<std::remove_reference_t<decltype(vehicle)>>;
-          reinterpret_cast<T*>(&buffer_)->~T();
+      buffer_ptr_(new (&buffer_) Any(std::forward<Any>(vehicle))),
+      buffer_deleter_([](void * ptr) noexcept {
+          using T = std::decay_t<decltype(vehicle)>;
+          reinterpret_cast<T*>(&ptr)->~T();
         }
       )
   {
@@ -62,13 +65,10 @@ public:
       sizeof(Any) <= MAX_BUFFER_SIZE,
       "you type must not exceed 64 bytes"
     );
-    
-    // placement new
-    new (&buffer_) Any(std::forward<Any>(vehicle));
   }
   
-  ~Vehicle() {
-    buffer_deleter_();
+  ~Vehicle() noexcept {
+    buffer_deleter_(reinterpret_cast<void*>(&buffer_));
   }
   
   // public interface that presents the same interface as the
@@ -93,6 +93,8 @@ struct AirPlane2 : VehicleInterface {
 
 // drive it
 int main(int argc, const char * argv[]) {
+  std::cout << "size of Vehicle container : " << sizeof(Vehicle) << '\n';
+  
   std::vector<Vehicle> vehicles2 = {Car2{}, AirPlane2{}};
   for (auto const & v : vehicles2) {
     v.accelerate(3);
