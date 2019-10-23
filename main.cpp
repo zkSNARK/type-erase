@@ -16,6 +16,7 @@
 #include <string>
 #include <iostream>
 #include <vector>
+#include <type_traits>
 
 #define MAX_BUFFER_SIZE 64
 
@@ -33,7 +34,7 @@ struct VehicleInterface {
  * the lambda with a cast.
  */
 class Vehicle {
-  std::string type_tag; // currently unused but could use for unerasure?
+  std::string type_tag_; // currently unused but could use for unerasure?
   std::function<void(int)>accelerate_impl_;
   
   std::aligned_storage<64> buffer_; // cache for the object this wraps
@@ -44,15 +45,15 @@ public:
     typename = std::enable_if_t<std::is_base_of<VehicleInterface, Any>::value>
   >
   Vehicle(Any && vehicle)
-    : type_tag(std::string(typeid(Any).name())),
+    : type_tag_(std::string(typeid(Any).name())),
       accelerate_impl_([this, &vehicle](int x) {
           using T = decltype(vehicle);
           return reinterpret_cast<T>(buffer_).accelerate(x);
         }
       ),
       buffer_deleter_([this, &vehicle] {
-          using T = decltype(vehicle);
-          delete reinterpret_cast<T>(buffer_);
+          using T = std::remove_cv_t<std::remove_reference_t<decltype(vehicle)>>;
+          reinterpret_cast<T*>(&buffer_)->~T();
         }
       )
   {
