@@ -60,17 +60,19 @@ class Vehicle {
   void (*buffer_deleter_)(void*) noexcept ;
 
 public:
+  // constructor
+  // constrain the constructor by is_base_of, which enforces the interface requirements
   template <typename Any,
     typename = std::enable_if_t<std::is_base_of<VehicleInterface, Any>::value>
   >
   Vehicle(Any && vehicle)
-    : accelerate_impl_([this](int x) noexcept {
-          using T = decltype(vehicle);
+    : accelerate_impl_([this](int x) noexcept {   // each instance method in the interface needs to be captured 
+          using T = decltype(vehicle);            // into a function exposed through type erasure interface
           return reinterpret_cast<T>(buffer_).accelerate(x);
         }
       ),
-      buffer_ptr_(new (&buffer_) Any(std::forward<Any>(vehicle))),
-      buffer_deleter_([](void * ptr) noexcept {
+      buffer_ptr_(new (&buffer_) Any(std::forward<Any>(vehicle))),    // placement new via buffer_ptr_
+      buffer_deleter_([](void * ptr) noexcept {    // store the deleter into the function ptr
           using T = std::decay_t<decltype(vehicle)>;
           reinterpret_cast<T*>(&ptr)->~T();
         }
@@ -89,6 +91,7 @@ public:
   
   // public interface that presents the same interface as the
   // base interface but dispatches the call to the real class.
+  // each method in the interface needs one of these.
   auto accelerate(int x) const {
     return accelerate_impl_(x);
   }
