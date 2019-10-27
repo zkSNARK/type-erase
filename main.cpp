@@ -5,11 +5,27 @@
 //  following watching this video https://youtu.be/OtU51Ytfe04..
 //
 //  The concept of type erasure is very powerful and very useful.
-//  There remain some significant barriors to use though.
-//  virtual table.  Just embed references to the actual functions
-//  directly in the class.  Using std::function and a lambda, we
-//  can capture the original object via reference, and stash the
-//  object into a local buffer
+//  In the toy example below we show how we can use a constrained 
+//  (through sfinae) type erasure container to enable a form of
+//  static polymorphism, that is safe, does not allocate memory
+//  on the heap, and is extremely fast because it entirely 
+//  avoids the usage of the typical virtual table lookups inherent 
+//  to polymorphic behaviors.
+//
+//  There remain some significant barriors to use though.  Primarily
+//  making a base class for these types of type erasure containers 
+//  means that someone must make both a interface class, and a
+//  type erasure wrapper.  The type erasure wrapper can be confusing
+//  to make if people aren't familiar with some more esoteric 
+//  c++ language features. 
+//
+//  The general idea in the code below is to embed references to the 
+//  functions in the real instance into the std::function which is 
+//  filled with a lambda upon construction.  std::function can allocate
+//  if the function is large enough, but these functions don't need 
+//  to capture or to be large since they are just a dispatch method
+//  for the interface in the type erasure instance to call the instance
+//  of the real object. 
 //
 
 
